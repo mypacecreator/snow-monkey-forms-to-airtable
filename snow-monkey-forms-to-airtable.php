@@ -71,6 +71,8 @@ function init() {
 
 	add_action( 'init', __NAMESPACE__ . '\register_mapping_post_type' );
 	add_action( 'init', __NAMESPACE__ . '\register_meta_fields' );
+	add_action( 'add_meta_boxes', __NAMESPACE__ . '\register_mapping_meta_box' );
+	add_action( 'save_post_airtable_mapping', __NAMESPACE__ . '\save_mapping_meta_box' );
 	add_action( 'snow_monkey_forms_after_send_mail', __NAMESPACE__ . '\send_to_airtable', 10, 2 );
 }
 
@@ -126,6 +128,114 @@ function register_meta_fields() {
 			'show_in_rest'      => true,
 		]
 	);
+}
+
+/**
+ * Register the dedicated Airtable mapping meta box.
+ */
+function register_mapping_meta_box() {
+	add_meta_box(
+		'smf-to-airtable-mapping-fields',
+		__( 'Airtable 連携設定', 'smf-to-airtable' ),
+		__NAMESPACE__ . '\render_mapping_meta_box',
+		'airtable_mapping',
+		'normal',
+		'default',
+		[
+			'__block_editor_compatible_meta_box' => true,
+		]
+	);
+}
+
+/**
+ * Render the dedicated Airtable mapping meta box.
+ *
+ * @param \WP_Post $post The current post object.
+ */
+function render_mapping_meta_box( $post ) {
+	$form_id     = get_post_meta( $post->ID, 'form_id', true );
+	$webhook_url = get_post_meta( $post->ID, 'webhook_url', true );
+
+	wp_nonce_field( 'smf_to_airtable_save_mapping', 'smf_to_airtable_mapping_nonce' );
+	?>
+	<p>
+		<label for="smf-to-airtable-form-id"><strong><?php esc_html_e( 'フォームID', 'smf-to-airtable' ); ?></strong></label>
+	</p>
+	<p>
+		<input
+			type="text"
+			id="smf-to-airtable-form-id"
+			name="smf_to_airtable_form_id"
+			value="<?php echo esc_attr( $form_id ); ?>"
+			class="widefat"
+		/>
+	</p>
+	<p class="description"><?php esc_html_e( 'Snow Monkey Forms 側のフォームIDを入力してください。', 'smf-to-airtable' ); ?></p>
+
+	<hr />
+
+	<p>
+		<label for="smf-to-airtable-webhook-url"><strong><?php esc_html_e( 'Webhook URL', 'smf-to-airtable' ); ?></strong></label>
+	</p>
+	<p>
+		<input
+			type="url"
+			id="smf-to-airtable-webhook-url"
+			name="smf_to_airtable_webhook_url"
+			value="<?php echo esc_attr( $webhook_url ); ?>"
+			class="widefat"
+			placeholder="https://"
+		/>
+	</p>
+	<p class="description"><?php esc_html_e( 'Airtable Automation の webhook URL を入力してください。', 'smf-to-airtable' ); ?></p>
+	<?php
+}
+
+/**
+ * Save the dedicated Airtable mapping meta box values.
+ *
+ * @param int $post_id The current post ID.
+ */
+function save_mapping_meta_box( $post_id ) {
+	if ( ! isset( $_POST['smf_to_airtable_mapping_nonce'] ) ) {
+		return;
+	}
+
+	if ( ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['smf_to_airtable_mapping_nonce'] ) ), 'smf_to_airtable_save_mapping' ) ) {
+		return;
+	}
+
+	if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
+		return;
+	}
+
+	if ( wp_is_post_revision( $post_id ) ) {
+		return;
+	}
+
+	if ( ! current_user_can( 'edit_post', $post_id ) ) {
+		return;
+	}
+
+	$form_id = isset( $_POST['smf_to_airtable_form_id'] )
+		? sanitize_text_field( wp_unslash( $_POST['smf_to_airtable_form_id'] ) )
+		: '';
+
+	$webhook_url = isset( $_POST['smf_to_airtable_webhook_url'] )
+		? esc_url_raw( wp_unslash( $_POST['smf_to_airtable_webhook_url'] ) )
+		: '';
+
+	if ( '' === $form_id ) {
+		delete_post_meta( $post_id, 'form_id' );
+	} else {
+		update_post_meta( $post_id, 'form_id', $form_id );
+	}
+
+	if ( '' === $webhook_url ) {
+		delete_post_meta( $post_id, 'webhook_url' );
+	} else {
+		update_post_meta( $post_id, 'webhook_url', $webhook_url );
+	}
 }
 
 /**
