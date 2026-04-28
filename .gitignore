@@ -1,0 +1,3 @@
+# Claude Code - personal local settings and memory (project-shared settings.json is committed)
+.claude/settings.local.json
+.claude/memory/

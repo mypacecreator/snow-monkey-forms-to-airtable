@@ -21,6 +21,47 @@ if ( ! defined( 'ABSPATH' ) ) {
 define( 'SMF_TO_AIRTABLE_PLUGIN_FILE', __FILE__ );
 define( 'SMF_TO_AIRTABLE_PLUGIN_DIR', dirname( __FILE__ ) );
 
+// Log mode: define SMF_TO_AIRTABLE_LOG_MODE as 'debug' in wp-config.php to use error_log().
+// If undefined, logs are stored in the database (production default).
+if ( ! defined( 'SMF_TO_AIRTABLE_LOG_MODE' ) ) {
+	define( 'SMF_TO_AIRTABLE_LOG_MODE', 'production' );
+}
+
+register_activation_hook( __FILE__, __NAMESPACE__ . '\activate' );
+
+/**
+ * Plugin activation: create the webhook log table.
+ */
+function activate() {
+	create_log_table();
+}
+
+/**
+ * Create the webhook log table if it doesn't exist.
+ */
+function create_log_table() {
+	global $wpdb;
+
+	$table  = $wpdb->prefix . 'smf_airtable_logs';
+	$charset = $wpdb->get_charset_collate();
+
+	$sql = "CREATE TABLE IF NOT EXISTS {$table} (
+		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+		form_id varchar(255) NOT NULL,
+		webhook_url varchar(2083) NOT NULL,
+		success tinyint(1) NOT NULL DEFAULT 0,
+		status_code smallint(6) NOT NULL DEFAULT 0,
+		error_message text,
+		created_at datetime NOT NULL,
+		PRIMARY KEY (id),
+		KEY form_id (form_id),
+		KEY created_at (created_at)
+	) {$charset};";
+
+	require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+	dbDelta( $sql );
+}
+
 /**
  * Initialize the plugin.
  */
@@ -95,28 +136,66 @@ function send_to_airtable( $form_id, $values ) {
 		return;
 	}
 
-	// Get webhook URL from airtable_mapping post type.
 	$webhook_url = get_webhook_url_for_form( $form_id );
 
 	if ( empty( $webhook_url ) || ! is_string( $webhook_url ) ) {
 		return;
 	}
 
-	// Prepare JSON payload.
 	$json_payload = wp_json_encode( $values );
 
 	if ( false === $json_payload ) {
 		return;
 	}
 
-	// Send to Airtable webhook (non-blocking).
-	wp_remote_post(
+	$response = wp_remote_post(
 		$webhook_url,
 		[
 			'headers'  => [ 'Content-Type' => 'application/json' ],
 			'body'     => $json_payload,
-			'blocking' => false,
+			'blocking' => true,
 		]
+	);
+
+	log_webhook_result( $form_id, $webhook_url, $response );
+}
+
+/**
+ * Log the webhook result to error_log (debug) or the database (production).
+ *
+ * @param string                $form_id     The form ID.
+ * @param string                $webhook_url The webhook URL.
+ * @param array|\WP_Error       $response    The wp_remote_post response.
+ */
+function log_webhook_result( $form_id, $webhook_url, $response ) {
+	$is_error    = is_wp_error( $response );
+	$status_code = $is_error ? 0 : (int) wp_remote_retrieve_response_code( $response );
+	$success     = ! $is_error && $status_code >= 200 && $status_code < 300;
+	$error_msg   = $is_error ? $response->get_error_message() : '';
+
+	if ( 'debug' === SMF_TO_AIRTABLE_LOG_MODE ) {
+		error_log( sprintf(
+			'[SMF to Airtable] form_id=%s success=%s status=%s%s',
+			$form_id,
+			$success ? 'true' : 'false',
+			$is_error ? $error_msg : $status_code,
+			$error_msg ? ' error=' . $error_msg : ''
+		) );
+		return;
+	}
+
+	global $wpdb;
+	$wpdb->insert(
+		$wpdb->prefix . 'smf_airtable_logs',
+		[
+			'form_id'       => $form_id,
+			'webhook_url'   => $webhook_url,
+			'success'       => $success ? 1 : 0,
+			'status_code'   => $status_code,
+			'error_message' => $error_msg,
+			'created_at'    => current_time( 'mysql' ),
+		],
+		[ '%s', '%s', '%d', '%d', '%s', '%s' ]
 	);
 }
 
@@ -132,8 +211,8 @@ function get_webhook_url_for_form( $form_id ) {
 		'posts_per_page' => 1,
 		'meta_query'     => [
 			[
-				'key'   => 'form_id',
-				'value' => $form_id,
+				'key'     => 'form_id',
+				'value'   => $form_id,
 				'compare' => '=',
 			],
 		],
