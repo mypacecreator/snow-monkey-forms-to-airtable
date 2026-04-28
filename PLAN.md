@@ -36,32 +36,49 @@ add_action( 'snow_monkey_forms_after_send_mail', 'smf_to_airtable_send', 10, 2 )
 
 ### 2. フォームID と Webhook URL のマッピング
 
-> **⚠️ 設定方法は未確定**
->
-> 実際の運用者（非開発者）が追加・編集しやすい方法を現在も検討中。
-> 確定次第、このセクションを更新する。
+**「Airtable 連携管理」専用のカスタム投稿タイプ（`airtable_mapping`）** を使用します。
 
-**検討中の候補：**
+#### 実装方式
 
-| 方式 | 概要 | 対象者 |
-|------|------|--------|
-| 管理画面 UI（カスタム投稿タイプ + ACF） | 「Airtable 連携管理」専用の投稿タイプを作成し、管理画面からノーコードで設定できる形 | 非開発者 |
-| テーマ外の設定ファイル | サーバー上のテーマディレクトリ外に PHP 設定ファイルを配置して管理 | 開発者・サーバー管理者 |
-| `functions.php` / プラグインへの直接記述（暫定） | フィルターフックで注入。最もシンプルだが、コード編集が必要 | 開発者 |
+- **投稿タイプ**: `airtable_mapping`
+- **権限**: 非公開（`public => false, show_ui => true`）
+- **カスタムフィールド**: 
+  - `form_id`: フォーム識別子（Snow Monkey Forms の投稿スラッグまたは ID）
+  - `webhook_url`: Airtable Automation の Webhook URL
+- **フィールド実装**: WordPress 標準のメタフィールド（ACF Pro 不要）
 
-**暫定実装（フィルターフック経由）：**
+#### マッピング取得ロジック
 
-プラグインのコアは `apply_filters( 'smf_to_airtable_webhook_map', [] )` でマッピングを取得する。
-設定方式が確定したら、このフィルターに値を渡す層を差し替える形で対応する。
+1. `snow_monkey_forms_after_send_mail` フックで `$form_id` を取得する。
+2. 現在のサイト（`get_current_blog_id()` / `get_current_site()`）内の `airtable_mapping` 投稿を検索する。
+3. メタフィールド `form_id` が一致する投稿から `webhook_url` を取得する。
+4. URL が見つかった場合、次のステップ（データ送信）へ進む。
+
+**サンプルコード（検索ロジック）:**
 
 ```php
-// 現在は functions.php などに直接記述する暫定方式
-add_filter( 'smf_to_airtable_webhook_map', function( $map ) {
-    $map['contact']  = 'https://hooks.airtable.com/workflows/v1/genericWebhook/xxxxx';
-    $map['estimate'] = 'https://hooks.airtable.com/workflows/v1/genericWebhook/yyyyy';
-    return $map;
-} );
+$args = [
+    'post_type'      => 'airtable_mapping',
+    'posts_per_page' => 1,
+    'meta_query'     => [
+        [
+            'key'   => 'form_id',
+            'value' => $form_id,
+            'compare' => '=',
+        ],
+    ],
+];
+
+$posts = new WP_Query( $args );
+if ( $posts->have_posts() ) {
+    $webhook_url = get_post_meta( $posts->posts[0]->ID, 'webhook_url', true );
+}
 ```
+
+#### マルチサイト対応
+
+- 各サイトの `airtable_mapping` は独立して管理される。
+- `WP_Query` は現在のサイトのデータベーステーブルを自動的に参照するため、マルチサイト対応は自動。
 
 ### 3. データ送信
 
@@ -97,6 +114,65 @@ wp_remote_post( $webhook_url, [
 1. Airtable の Automation 画面で「When webhook received」トリガーを作成する。
 2. 発行された Webhook URL を WordPress 側のマッピングに設定する。
 3. トリガー後のアクションとして「Create record」などを設定し、JSON のキーをフィールドにマッピングする。
+
+---
+
+## 実装詳細
+
+### ファイル構成
+
+メインプラグインファイル `snow-monkey-forms-to-airtable.php` に、すべての機能を実装：
+
+```php
+// プラグイン初期化
+init()
+├── register_mapping_post_type()  // CPT 登録
+├── register_meta_fields()         // メタフィールド登録
+└── add_action( 'snow_monkey_forms_after_send_mail' )  // フック登録
+
+// フォーム送信時処理
+send_to_airtable( $form_id, $values )
+├── get_webhook_url_for_form( $form_id )  // マッピング検索
+└── wp_remote_post()               // Webhook 送信
+```
+
+### 主要関数
+
+#### `register_mapping_post_type()`
+- カスタム投稿タイプ `airtable_mapping` を登録
+- 権限: `public => false, show_ui => true`
+- REST API対応: `show_in_rest => true`
+
+#### `register_meta_fields()`
+- メタフィールド `form_id` と `webhook_url` を登録
+- 両フィールドは REST API から操作可能（`show_in_rest => true`）
+
+#### `send_to_airtable( $form_id, $values )`
+- `snow_monkey_forms_after_send_mail` アクションフックのコールバック
+- `$form_id`: Snow Monkey Forms のフォーム ID
+- `$values`: フォーム送信データ（連想配列）
+- 処理:
+  1. `get_webhook_url_for_form()` で Webhook URL を検索
+  2. URL が見つかった場合、`$values` を JSON 化
+  3. `wp_remote_post()` で Airtable へ非同期送信（`blocking => false`）
+
+#### `get_webhook_url_for_form( $form_id )`
+- `WP_Query` で `airtable_mapping` から `form_id` が一致する投稿を検索
+- 見つかった場合、`webhook_url` メタフィールドを取得して返却
+- マルチサイト対応: `WP_Query` は自動的に現在のサイトのテーブルを参照
+
+### マルチサイト対応
+
+- 各サイトの `airtable_mapping` は独立して管理される
+- `WP_Query` は `get_current_blog_id()` / サイト固有のテーブルを自動参照
+- サイト間でのマッピング設定の混在なし
+
+### エラーハンドリング
+
+- `$form_id` が空の場合、または `$values` が配列でない場合: 早期終了（`return`）
+- Webhook URL が見つからない、または空文字列の場合: 処理をスキップ
+- JSON エンコード失敗時: 処理をスキップ
+- `blocking => false` のため、送信結果は確認しない（Airtable 側で確認）
 
 ---
 
