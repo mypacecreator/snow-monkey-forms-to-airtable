@@ -36,15 +36,26 @@ add_action( 'snow_monkey_forms_after_send_mail', 'smf_to_airtable_send', 10, 2 )
 
 ### 2. フォームID と Webhook URL のマッピング
 
-ハードコーディングを避けるため、設定はフィルターフックで外部から注入できる形にする。
+> **⚠️ 設定方法は未確定**
+>
+> 実際の運用者（非開発者）が追加・編集しやすい方法を現在も検討中。
+> 確定次第、このセクションを更新する。
+
+**検討中の候補：**
+
+| 方式 | 概要 | 対象者 |
+|------|------|--------|
+| 管理画面 UI（カスタム投稿タイプ + ACF） | 「Airtable 連携管理」専用の投稿タイプを作成し、管理画面からノーコードで設定できる形 | 非開発者 |
+| テーマ外の設定ファイル | サーバー上のテーマディレクトリ外に PHP 設定ファイルを配置して管理 | 開発者・サーバー管理者 |
+| `functions.php` / プラグインへの直接記述（暫定） | フィルターフックで注入。最もシンプルだが、コード編集が必要 | 開発者 |
+
+**暫定実装（フィルターフック経由）：**
+
+プラグインのコアは `apply_filters( 'smf_to_airtable_webhook_map', [] )` でマッピングを取得する。
+設定方式が確定したら、このフィルターに値を渡す層を差し替える形で対応する。
 
 ```php
-$webhook_map = apply_filters( 'smf_to_airtable_webhook_map', [] );
-```
-
-利用者は `functions.php` などに以下のように記述して設定する。
-
-```php
+// 現在は functions.php などに直接記述する暫定方式
 add_filter( 'smf_to_airtable_webhook_map', function( $map ) {
     $map['contact']  = 'https://hooks.airtable.com/workflows/v1/genericWebhook/xxxxx';
     $map['estimate'] = 'https://hooks.airtable.com/workflows/v1/genericWebhook/yyyyy';
@@ -90,7 +101,7 @@ wp_remote_post( $webhook_url, [
 
 ## 将来的な拡張ポイント
 
+- **マッピング設定方式の確定**（最優先課題）: 非開発者でも設定できる管理画面 UI（カスタム投稿タイプ + ACF 等）やテーマ外設定ファイル方式の採用を検討中
 - フィールドのキー名変換（例：日本語キー → Airtable フィールド名）
 - 送信前の値バリデーション
 - ログ出力（`WP_DEBUG_LOG` 連携）
-- 管理画面 UI でのマッピング設定
