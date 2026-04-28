@@ -73,7 +73,7 @@ function init() {
 	add_action( 'init', __NAMESPACE__ . '\register_meta_fields' );
 	add_action( 'add_meta_boxes', __NAMESPACE__ . '\register_mapping_meta_box' );
 	add_action( 'save_post_airtable_mapping', __NAMESPACE__ . '\save_mapping_meta_box' );
-	add_action( 'snow_monkey_forms_after_send_mail', __NAMESPACE__ . '\send_to_airtable', 10, 2 );
+	add_action( 'snow_monkey_forms/administrator_mailer/after_send', __NAMESPACE__ . '\handle_administrator_mailer_after_send', 10, 3 );
 }
 
 add_action( 'plugins_loaded', __NAMESPACE__ . '\init' );
@@ -239,9 +239,56 @@ function save_mapping_meta_box( $post_id ) {
 }
 
 /**
+ * Bridge Snow Monkey Forms after_send hook args to send_to_airtable().
+ *
+ * @param bool   $is_sended Whether administrator mail was sent successfully.
+ * @param object $responser Form responser object.
+ * @param object $setting   Form setting object.
+ */
+function handle_administrator_mailer_after_send( $is_sended, $responser, $setting ) {
+	$form_id = '';
+	$values  = [];
+
+	if ( is_object( $responser ) && method_exists( $responser, 'get' ) ) {
+		$form_id_value = $responser->get( 'form_id' );
+		if ( is_scalar( $form_id_value ) ) {
+			$form_id = sanitize_text_field( (string) $form_id_value );
+		}
+	}
+
+	if ( is_object( $responser ) ) {
+		if ( method_exists( $responser, 'get_values' ) ) {
+			$values = (array) $responser->get_values();
+		} elseif ( isset( $responser->values ) && is_array( $responser->values ) ) {
+			$values = $responser->values;
+		}
+	}
+
+	if ( true !== $is_sended ) {
+		$webhook_url = is_string( $form_id ) && '' !== $form_id ? (string) get_webhook_url_for_form( $form_id ) : '';
+		log_webhook_result(
+			$form_id,
+			$webhook_url,
+			new \WP_Error( 'smf_admin_mail_send_failed', 'Administrator mail send failed.' )
+		);
+		return;
+	}
+
+	if ( '' === $form_id && is_object( $setting ) ) {
+		if ( isset( $setting->id ) && is_scalar( $setting->id ) ) {
+			$form_id = sanitize_text_field( (string) $setting->id );
+		} elseif ( isset( $setting->name ) && is_scalar( $setting->name ) ) {
+			$form_id = sanitize_text_field( (string) $setting->name );
+		}
+	}
+
+	send_to_airtable( $form_id, $values );
+}
+
+/**
  * Send form data to Airtable via webhook.
  *
- * @param string $form_id The form ID (post slug or post ID).
+ * @param string $form_id The form ID.
  * @param array  $values  The form submission values.
  */
 function send_to_airtable( $form_id, $values ) {
@@ -297,7 +344,6 @@ function log_webhook_result( $form_id, $webhook_url, $response ) {
 			$status_label,
 			$status_value
 		) );
-		return;
 	}
 
 	global $wpdb;
