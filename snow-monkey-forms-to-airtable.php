@@ -313,6 +313,8 @@ function handle_submission_for_airtable( $is_sended, $responser, $setting, $sour
  * @param array  $values  The form submission values.
  */
 function send_to_airtable( $form_id, $values ) {
+	$debug_mode = defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG;
+
 	if ( ! $form_id || ! is_array( $values ) ) {
 		log_webhook_result(
 			! empty( $form_id ) ? (string) $form_id : '(unknown)',
@@ -349,12 +351,15 @@ function send_to_airtable( $form_id, $values ) {
 		[
 			'headers'  => [ 'Content-Type' => 'application/json' ],
 			'body'     => $json_payload,
-			'blocking' => true,
-			'timeout'  => 10,
+			// Keep submissions fast in production; debug mode can wait for response details.
+			'blocking' => $debug_mode,
+			'timeout'  => $debug_mode ? 10 : 0.01,
 		]
 	);
 
-	log_webhook_result( $form_id, $webhook_url, $response );
+	if ( $debug_mode ) {
+		log_webhook_result( $form_id, $webhook_url, $response );
+	}
 }
 
 /**
