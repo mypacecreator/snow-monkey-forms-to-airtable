@@ -68,7 +68,8 @@ add_filter( 'smf_to_airtable_webhook_map', function( $map ) {
 - `$values` をそのまま `wp_json_encode()` で JSON 化する。
 - フィールド名は動的（ループ処理）で、ハードコーディングしない。
 - `wp_remote_post()` でリクエストを送信する。
-- Airtable のレート制限（毎秒 5 リクエスト）を考慮し、`blocking => false` を指定して非同期送信とする。
+- `blocking => false` を指定してノンブロッキング送信とし、WordPress のレスポンスへの影響を抑える。
+- **注意**: `blocking => false` は待ち時間の削減であり、Airtable の 5 req/s レート制限を守るスロットリング・リトライではない。短時間の大量送信ではレート制限エラーが発生する可能性がある（将来的にはキュー/WP-Cron/リトライ対応を検討）。
 
 ```php
 wp_remote_post( $webhook_url, [
@@ -102,6 +103,7 @@ wp_remote_post( $webhook_url, [
 ## 将来的な拡張ポイント
 
 - **マッピング設定方式の確定**（最優先課題）: 非開発者でも設定できる管理画面 UI（カスタム投稿タイプ + ACF 等）やテーマ外設定ファイル方式の採用を検討中
+- **レート制限対策**: WP-Cron を使ったキューイング送信、指数バックオフによるリトライ、送信失敗の検知
 - フィールドのキー名変換（例：日本語キー → Airtable フィールド名）
 - 送信前の値バリデーション
 - ログ出力（`WP_DEBUG_LOG` 連携）
