@@ -74,6 +74,7 @@ function init() {
 	add_action( 'add_meta_boxes', __NAMESPACE__ . '\register_mapping_meta_box' );
 	add_action( 'save_post_airtable_mapping', __NAMESPACE__ . '\save_mapping_meta_box' );
 	add_action( 'snow_monkey_forms/administrator_mailer/after_send', __NAMESPACE__ . '\handle_administrator_mailer_after_send', 10, 3 );
+	add_filter( 'snow_monkey_forms/administrator_mailer/is_sended', __NAMESPACE__ . '\handle_administrator_mailer_is_sended', 10, 3 );
 }
 
 add_action( 'plugins_loaded', __NAMESPACE__ . '\init' );
@@ -246,6 +247,38 @@ function save_mapping_meta_box( $post_id ) {
  * @param object $setting   Form setting object.
  */
 function handle_administrator_mailer_after_send( $is_sended, $responser, $setting ) {
+	handle_submission_for_airtable( $is_sended, $responser, $setting, 'after_send' );
+}
+
+/**
+ * Fallback hook handler to support environments where after_send is not firing.
+ *
+ * @param bool   $is_sended Whether administrator mail was sent successfully.
+ * @param object $responser Form responser object.
+ * @param object $setting   Form setting object.
+ * @return bool
+ */
+function handle_administrator_mailer_is_sended( $is_sended, $responser, $setting ) {
+	handle_submission_for_airtable( $is_sended, $responser, $setting, 'is_sended' );
+
+	return $is_sended;
+}
+
+/**
+ * Shared submission dispatcher from Snow Monkey Forms hooks.
+ *
+ * @param bool   $is_sended Whether administrator mail was sent successfully.
+ * @param object $responser Form responser object.
+ * @param object $setting   Form setting object.
+ * @param string $source    Hook source.
+ */
+function handle_submission_for_airtable( $is_sended, $responser, $setting, $source ) {
+	static $already_processed = false;
+
+	if ( $already_processed ) {
+		return;
+	}
+
 	$form_id = '';
 	$values  = [];
 
@@ -255,8 +288,22 @@ function handle_administrator_mailer_after_send( $is_sended, $responser, $settin
 			$form_id = sanitize_text_field( (string) $setting->id );
 		} elseif ( isset( $setting->post_id ) && is_scalar( $setting->post_id ) ) {
 			$form_id = sanitize_text_field( (string) $setting->post_id );
+		} elseif ( isset( $setting->form_id ) && is_scalar( $setting->form_id ) ) {
+			$form_id = sanitize_text_field( (string) $setting->form_id );
+		} elseif ( isset( $setting->post ) && is_object( $setting->post ) && isset( $setting->post->ID ) && is_scalar( $setting->post->ID ) ) {
+			$form_id = sanitize_text_field( (string) $setting->post->ID );
 		} elseif ( isset( $setting->name ) && is_scalar( $setting->name ) ) {
 			$form_id = sanitize_text_field( (string) $setting->name );
+		}
+
+		if ( '' === $form_id && method_exists( $setting, 'get' ) ) {
+			foreach ( [ 'id', 'post_id', 'form_id', 'name' ] as $key ) {
+				$value = $setting->get( $key );
+				if ( is_scalar( $value ) && '' !== (string) $value ) {
+					$form_id = sanitize_text_field( (string) $value );
+					break;
+				}
+			}
 		}
 	}
 
@@ -275,16 +322,31 @@ function handle_administrator_mailer_after_send( $is_sended, $responser, $settin
 			$webhook_url,
 			new \WP_Error( 'smf_admin_mail_send_failed', 'Administrator mail send failed.' )
 		);
+		$already_processed = true;
 		return;
 	}
 
 	if ( '' === $form_id && is_object( $responser ) && method_exists( $responser, 'get' ) ) {
-		$form_id_value = $responser->get( 'form_id' );
-		if ( is_scalar( $form_id_value ) ) {
-			$form_id = sanitize_text_field( (string) $form_id_value );
+		foreach ( [ 'form_id', 'post_id', 'id' ] as $key ) {
+			$form_id_value = $responser->get( $key );
+			if ( is_scalar( $form_id_value ) && '' !== (string) $form_id_value ) {
+				$form_id = sanitize_text_field( (string) $form_id_value );
+				break;
+			}
 		}
 	}
 
+	if ( '' === $form_id ) {
+		log_webhook_result(
+			'(unknown)',
+			'',
+			new \WP_Error( 'smf_form_id_not_found', sprintf( 'form_id could not be resolved (source=%s).', $source ) )
+		);
+		// Let the other hook try again because it may provide richer context.
+		return;
+	}
+
+	$already_processed = true;
 	send_to_airtable( $form_id, $values );
 }
 
@@ -296,18 +358,33 @@ function handle_administrator_mailer_after_send( $is_sended, $responser, $settin
  */
 function send_to_airtable( $form_id, $values ) {
 	if ( ! $form_id || ! is_array( $values ) ) {
+		log_webhook_result(
+			! empty( $form_id ) ? (string) $form_id : '(unknown)',
+			'',
+			new \WP_Error( 'smf_invalid_payload', 'form_id or values are invalid.' )
+		);
 		return;
 	}
 
 	$webhook_url = get_webhook_url_for_form( $form_id );
 
 	if ( empty( $webhook_url ) || ! is_string( $webhook_url ) ) {
+		log_webhook_result(
+			(string) $form_id,
+			'',
+			new \WP_Error( 'smf_webhook_mapping_not_found', 'Webhook URL mapping not found for form_id.' )
+		);
 		return;
 	}
 
 	$json_payload = wp_json_encode( $values );
 
 	if ( false === $json_payload ) {
+		log_webhook_result(
+			(string) $form_id,
+			$webhook_url,
+			new \WP_Error( 'smf_payload_encode_failed', 'Failed to encode payload to JSON.' )
+		);
 		return;
 	}
 
@@ -332,6 +409,8 @@ function send_to_airtable( $form_id, $values ) {
  * @param array|\WP_Error       $response    The wp_remote_post response.
  */
 function log_webhook_result( $form_id, $webhook_url, $response ) {
+	$form_id = '' !== (string) $form_id ? (string) $form_id : '(unknown)';
+
 	$is_error    = is_wp_error( $response );
 	$status_code = $is_error ? 0 : (int) wp_remote_retrieve_response_code( $response );
 	$success     = ! $is_error && $status_code >= 200 && $status_code < 300;
@@ -350,7 +429,7 @@ function log_webhook_result( $form_id, $webhook_url, $response ) {
 	}
 
 	global $wpdb;
-	$wpdb->insert(
+	$inserted = $wpdb->insert(
 		$wpdb->prefix . 'smf_airtable_logs',
 		[
 			'form_id'       => $form_id,
@@ -362,6 +441,10 @@ function log_webhook_result( $form_id, $webhook_url, $response ) {
 		],
 		[ '%s', '%s', '%d', '%d', '%s', '%s' ]
 	);
+
+	if ( false === $inserted && defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) {
+		error_log( sprintf( '[SMF to Airtable] db_insert_failed form_id=%s error=%s', $form_id, $wpdb->last_error ) );
+	}
 }
 
 /**
