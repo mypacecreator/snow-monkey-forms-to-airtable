@@ -170,7 +170,7 @@ function render_mapping_meta_box( $post ) {
 			class="widefat"
 		/>
 	</p>
-	<p class="description"><?php esc_html_e( 'Snow Monkey Forms 側のフォームIDを入力してください。', 'smf-to-airtable' ); ?></p>
+	<p class="description"><?php esc_html_e( 'Snow Monkey Forms のフォーム投稿ID（post_id）を入力してください。', 'smf-to-airtable' ); ?></p>
 
 	<hr />
 
@@ -249,10 +249,14 @@ function handle_administrator_mailer_after_send( $is_sended, $responser, $settin
 	$form_id = '';
 	$values  = [];
 
-	if ( is_object( $responser ) && method_exists( $responser, 'get' ) ) {
-		$form_id_value = $responser->get( 'form_id' );
-		if ( is_scalar( $form_id_value ) ) {
-			$form_id = sanitize_text_field( (string) $form_id_value );
+	// Prefer the form post ID from setting to avoid requiring a hidden form field.
+	if ( is_object( $setting ) ) {
+		if ( isset( $setting->id ) && is_scalar( $setting->id ) ) {
+			$form_id = sanitize_text_field( (string) $setting->id );
+		} elseif ( isset( $setting->post_id ) && is_scalar( $setting->post_id ) ) {
+			$form_id = sanitize_text_field( (string) $setting->post_id );
+		} elseif ( isset( $setting->name ) && is_scalar( $setting->name ) ) {
+			$form_id = sanitize_text_field( (string) $setting->name );
 		}
 	}
 
@@ -274,11 +278,10 @@ function handle_administrator_mailer_after_send( $is_sended, $responser, $settin
 		return;
 	}
 
-	if ( '' === $form_id && is_object( $setting ) ) {
-		if ( isset( $setting->id ) && is_scalar( $setting->id ) ) {
-			$form_id = sanitize_text_field( (string) $setting->id );
-		} elseif ( isset( $setting->name ) && is_scalar( $setting->name ) ) {
-			$form_id = sanitize_text_field( (string) $setting->name );
+	if ( '' === $form_id && is_object( $responser ) && method_exists( $responser, 'get' ) ) {
+		$form_id_value = $responser->get( 'form_id' );
+		if ( is_scalar( $form_id_value ) ) {
+			$form_id = sanitize_text_field( (string) $form_id_value );
 		}
 	}
 
