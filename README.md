@@ -108,7 +108,7 @@ wp-content/mu-plugins/snow-monkey-forms-to-airtable.php
    | 項目 | 内容 |
    |------|------|
    | **投稿タイトル**（管理用名） | 例：「お問い合わせ → Airtable」 |
-   | **フォーム ID** | Snow Monkey Forms のフォーム**投稿 ID**（数値） |
+   | **フォーム ID** | Snow Monkey Forms のフォーム**投稿 ID**（数値）を推奨 |
    | **Webhook URL** | Airtable Automation から取得した Webhook URL |
 
 5. 「公開」または「更新」を押して保存します。
@@ -136,7 +136,8 @@ Snow Monkey Forms が管理者メール送信を実行
         ↓
 snow_monkey_forms/administrator_mailer/after_send（または is_sended）フックが発火
         ↓
-本プラグインが $setting オブジェクトからフォーム投稿 ID を取得
+本プラグインが $setting オブジェクトからフォーム識別子を解決
+（解決できない場合のみ $responser を補助的に参照）
         ↓
 airtable_mapping からフォーム ID に対応する Webhook URL を検索
         ↓
@@ -197,7 +198,7 @@ define( 'WP_DEBUG_DISPLAY', false );
 |------|--------|---------------------|
 | `blocking` | `false`（ノンブロッキング） | `true`（レスポンス待ち） |
 | `timeout` | 1 秒 | 10 秒 |
-| ログ出力 | エラー時のみ | 常時（成功・失敗ともに） |
+| ログ出力 | なし | 常時（成功・失敗ともに） |
 
 **ログ出力例:**
 
