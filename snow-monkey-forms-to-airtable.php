@@ -21,11 +21,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 define( 'SMF_TO_AIRTABLE_PLUGIN_FILE', __FILE__ );
 define( 'SMF_TO_AIRTABLE_PLUGIN_DIR', dirname( __FILE__ ) );
 
-// Log mode: define SMF_TO_AIRTABLE_LOG_MODE as 'debug' in wp-config.php to use error_log().
-// If undefined, logs are stored in the database (production default).
-if ( ! defined( 'SMF_TO_AIRTABLE_LOG_MODE' ) ) {
-	define( 'SMF_TO_AIRTABLE_LOG_MODE', 'production' );
-}
 
 register_activation_hook( __FILE__, __NAMESPACE__ . '\activate' );
 
@@ -173,7 +168,7 @@ function log_webhook_result( $form_id, $webhook_url, $response ) {
 	$success     = ! $is_error && $status_code >= 200 && $status_code < 300;
 	$error_msg   = $is_error ? $response->get_error_message() : '';
 
-	if ( 'debug' === SMF_TO_AIRTABLE_LOG_MODE ) {
+	if ( defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) {
 		error_log( sprintf(
 			'[SMF to Airtable] form_id=%s success=%s status=%s%s',
 			$form_id,
