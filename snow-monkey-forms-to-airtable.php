@@ -25,9 +25,9 @@ define( 'SMF_TO_AIRTABLE_PLUGIN_DIR', dirname( __FILE__ ) );
  * Initialize the plugin.
  */
 function init() {
-	register_mapping_post_type();
-	add_action( 'snow_monkey_forms_after_send_mail', __NAMESPACE__ . '\send_to_airtable', 10, 2 );
+	add_action( 'init', __NAMESPACE__ . '\register_mapping_post_type' );
 	add_action( 'init', __NAMESPACE__ . '\register_meta_fields' );
+	add_action( 'snow_monkey_forms_after_send_mail', __NAMESPACE__ . '\send_to_airtable', 10, 2 );
 }
 
 add_action( 'plugins_loaded', __NAMESPACE__ . '\init' );
