@@ -37,10 +37,11 @@ function activate() {
 function create_log_table() {
 	global $wpdb;
 
-	$table  = $wpdb->prefix . 'smf_airtable_logs';
+	$table   = $wpdb->prefix . 'smf_airtable_logs';
 	$charset = $wpdb->get_charset_collate();
 
-	$sql = "CREATE TABLE IF NOT EXISTS {$table} (
+	// dbDelta requires CREATE TABLE without IF NOT EXISTS to detect schema changes correctly.
+	$sql = "CREATE TABLE {$table} (
 		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 		form_id varchar(255) NOT NULL,
 		webhook_url varchar(2083) NOT NULL,
@@ -61,6 +62,13 @@ function create_log_table() {
  * Initialize the plugin.
  */
 function init() {
+	// Run dbDelta on version bump so the table exists even when the plugin was already active.
+	$installed_ver = get_option( 'smf_airtable_db_version', '0' );
+	if ( '1.0' !== $installed_ver ) {
+		create_log_table();
+		update_option( 'smf_airtable_db_version', '1.0' );
+	}
+
 	add_action( 'init', __NAMESPACE__ . '\register_mapping_post_type' );
 	add_action( 'init', __NAMESPACE__ . '\register_meta_fields' );
 	add_action( 'snow_monkey_forms_after_send_mail', __NAMESPACE__ . '\send_to_airtable', 10, 2 );
@@ -149,6 +157,7 @@ function send_to_airtable( $form_id, $values ) {
 			'headers'  => [ 'Content-Type' => 'application/json' ],
 			'body'     => $json_payload,
 			'blocking' => true,
+			'timeout'  => 10,
 		]
 	);
 
@@ -169,12 +178,14 @@ function log_webhook_result( $form_id, $webhook_url, $response ) {
 	$error_msg   = $is_error ? $response->get_error_message() : '';
 
 	if ( defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) {
+		$status_label = $is_error ? 'error' : 'status';
+		$status_value = $is_error ? $error_msg : $status_code;
 		error_log( sprintf(
-			'[SMF to Airtable] form_id=%s success=%s status=%s%s',
+			'[SMF to Airtable] form_id=%s success=%s %s=%s',
 			$form_id,
 			$success ? 'true' : 'false',
-			$is_error ? $error_msg : $status_code,
-			$error_msg ? ' error=' . $error_msg : ''
+			$status_label,
+			$status_value
 		) );
 		return;
 	}
