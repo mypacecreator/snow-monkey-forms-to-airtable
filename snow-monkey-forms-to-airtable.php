@@ -21,54 +21,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 define( 'SMF_TO_AIRTABLE_PLUGIN_FILE', __FILE__ );
 define( 'SMF_TO_AIRTABLE_PLUGIN_DIR', dirname( __FILE__ ) );
 
-
-register_activation_hook( __FILE__, __NAMESPACE__ . '\activate' );
-
-/**
- * Plugin activation: create the webhook log table.
- */
-function activate() {
-	create_log_table();
-}
-
-/**
- * Create the webhook log table if it doesn't exist.
- */
-function create_log_table() {
-	global $wpdb;
-
-	$table   = $wpdb->prefix . 'smf_airtable_logs';
-	$charset = $wpdb->get_charset_collate();
-
-	// dbDelta requires CREATE TABLE without IF NOT EXISTS to detect schema changes correctly.
-	$sql = "CREATE TABLE {$table} (
-		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-		form_id varchar(255) NOT NULL,
-		webhook_url varchar(2083) NOT NULL,
-		success tinyint(1) NOT NULL DEFAULT 0,
-		status_code smallint(6) NOT NULL DEFAULT 0,
-		error_message text,
-		created_at datetime NOT NULL,
-		PRIMARY KEY (id),
-		KEY form_id (form_id),
-		KEY created_at (created_at)
-	) {$charset};";
-
-	require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-	dbDelta( $sql );
-}
-
 /**
  * Initialize the plugin.
  */
 function init() {
-	// Run dbDelta on version bump so the table exists even when the plugin was already active.
-	$installed_ver = get_option( 'smf_airtable_db_version', '0' );
-	if ( '1.0' !== $installed_ver ) {
-		create_log_table();
-		update_option( 'smf_airtable_db_version', '1.0' );
-	}
-
 	add_action( 'init', __NAMESPACE__ . '\register_mapping_post_type' );
 	add_action( 'init', __NAMESPACE__ . '\register_meta_fields' );
 	add_action( 'add_meta_boxes', __NAMESPACE__ . '\register_mapping_meta_box' );
@@ -402,7 +358,7 @@ function send_to_airtable( $form_id, $values ) {
 }
 
 /**
- * Log the webhook result to error_log (debug) or the database (production).
+ * Log the webhook result to error_log when WP_DEBUG_LOG is enabled.
  *
  * @param string                $form_id     The form ID.
  * @param string                $webhook_url The webhook URL.
@@ -426,24 +382,6 @@ function log_webhook_result( $form_id, $webhook_url, $response ) {
 			$status_label,
 			$status_value
 		) );
-	}
-
-	global $wpdb;
-	$inserted = $wpdb->insert(
-		$wpdb->prefix . 'smf_airtable_logs',
-		[
-			'form_id'       => $form_id,
-			'webhook_url'   => $webhook_url,
-			'success'       => $success ? 1 : 0,
-			'status_code'   => $status_code,
-			'error_message' => $error_msg,
-			'created_at'    => current_time( 'mysql' ),
-		],
-		[ '%s', '%s', '%d', '%d', '%s', '%s' ]
-	);
-
-	if ( false === $inserted && defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) {
-		error_log( sprintf( '[SMF to Airtable] db_insert_failed form_id=%s error=%s', $form_id, $wpdb->last_error ) );
 	}
 }
 
