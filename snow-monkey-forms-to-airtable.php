@@ -353,11 +353,11 @@ function send_to_airtable( $form_id, $values ) {
 			'body'     => $json_payload,
 			// Keep submissions fast in production; debug mode can wait for response details.
 			'blocking' => $debug_mode,
-			'timeout'  => $debug_mode ? 10 : 0.01,
+			'timeout'  => $debug_mode ? 10 : 1,
 		]
 	);
 
-	if ( $debug_mode ) {
+	if ( $debug_mode || is_wp_error( $response ) ) {
 		log_webhook_result( $form_id, $webhook_url, $response );
 	}
 }
