@@ -263,12 +263,31 @@ function handle_submission_for_airtable( $is_sended, $responser, $setting, $sour
 		}
 	}
 
+	// Debug: Responser object structure
+	if ( defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG && is_object( $responser ) ) {
+		error_log( '[SMF to Airtable DEBUG] Responser class: ' . get_class( $responser ) );
+		error_log( '[SMF to Airtable DEBUG] Responser methods: ' . implode( ', ', get_class_methods( $responser ) ) );
+	}
+
 	if ( is_object( $responser ) ) {
-		if ( method_exists( $responser, 'get_values' ) ) {
+		// Primary: Use get_all() method (standard in SMF v5.x)
+		if ( method_exists( $responser, 'get_all' ) ) {
+			$values = (array) $responser->get_all();
+		}
+		// Fallback 1: Try get_values() for potential older versions
+		elseif ( method_exists( $responser, 'get_values' ) ) {
 			$values = (array) $responser->get_values();
-		} elseif ( isset( $responser->values ) && is_array( $responser->values ) ) {
+		}
+		// Fallback 2: Try direct property access
+		elseif ( isset( $responser->values ) && is_array( $responser->values ) ) {
 			$values = $responser->values;
 		}
+	}
+
+	// Debug: Values extraction result
+	if ( defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) {
+		error_log( '[SMF to Airtable DEBUG] Values count: ' . count( $values ) );
+		error_log( '[SMF to Airtable DEBUG] Values: ' . print_r( $values, true ) );
 	}
 
 	if ( true !== $is_sended ) {
@@ -299,6 +318,17 @@ function handle_submission_for_airtable( $is_sended, $responser, $setting, $sour
 			new \WP_Error( 'smf_form_id_not_found', sprintf( 'form_id could not be resolved (source=%s).', $source ) )
 		);
 		// Let the other hook try again because it may provide richer context.
+		return;
+	}
+
+	// Validate values before sending
+	if ( empty( $values ) ) {
+		log_webhook_result(
+			$form_id,
+			'',
+			new \WP_Error( 'smf_empty_values', sprintf( 'Form values are empty (source=%s).', $source ) )
+		);
+		$already_processed = true;
 		return;
 	}
 
@@ -336,6 +366,11 @@ function send_to_airtable( $form_id, $values ) {
 	}
 
 	$json_payload = wp_json_encode( $values );
+
+	// Debug: JSON payload before sending
+	if ( defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) {
+		error_log( '[SMF to Airtable DEBUG] JSON payload: ' . substr( $json_payload, 0, 500 ) );
+	}
 
 	if ( false === $json_payload ) {
 		log_webhook_result(
