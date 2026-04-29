@@ -64,10 +64,12 @@ wp-content/mu-plugins/snow-monkey-forms-to-airtable.php
    wp-content/mu-plugins/snow-monkey-forms-to-airtable/
    ```
 
-2. mu-plugins 直下にローダーファイルを作成します。
+2. mu-plugins 直下に `load.php` という名前のローダーファイルを作成します。
+
+   > **補足:** ローダーファイルの名前はプラグイン名と同じにする必要はありません。`load.php` のような汎用的な名前にしておくと、複数のプラグインを同じファイルで読み込む場合にも対応しやすくなります。
 
    ```
-   wp-content/mu-plugins/snow-monkey-forms-to-airtable.php
+   wp-content/mu-plugins/load.php
    ```
 
    ファイルの内容：
@@ -76,6 +78,29 @@ wp-content/mu-plugins/snow-monkey-forms-to-airtable.php
    <?php
    require_once __DIR__ . '/snow-monkey-forms-to-airtable/snow-monkey-forms-to-airtable.php';
    ```
+
+#### 複数の mu-plugins を使用する場合
+
+サブディレクトリ方式で複数の mu-plugins を運用する場合は、同じ `load.php` に `require_once` を追記するだけで対応できます。
+
+**ディレクトリ構成例:**
+
+```
+wp-content/mu-plugins/
+├── load.php                          ← ローダーファイル（1本）
+├── snow-monkey-forms-to-airtable/    ← 本プラグイン
+│   └── snow-monkey-forms-to-airtable.php
+└── another-plugin/                   ← 別の mu-plugin
+    └── another-plugin.php
+```
+
+**`load.php` の内容例:**
+
+```php
+<?php
+require_once __DIR__ . '/snow-monkey-forms-to-airtable/snow-monkey-forms-to-airtable.php';
+require_once __DIR__ . '/another-plugin/another-plugin.php';
+```
 
 ---
 
