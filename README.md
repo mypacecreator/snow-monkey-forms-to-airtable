@@ -76,8 +76,15 @@ wp-content/mu-plugins/snow-monkey-forms-to-airtable.php
 
    ```php
    <?php
+   /**
+    * Plugin Name: MU Plugins Loader
+    * Description: mu-plugins ディレクトリのサブディレクトリに置いたプラグインを読み込むローダー。
+    */
+
    require_once __DIR__ . '/snow-monkey-forms-to-airtable/snow-monkey-forms-to-airtable.php';
    ```
+
+   > **補足:** `Plugin Name` ヘッダーを記述しておくと、WordPress 管理画面の **「インストール済みプラグイン」→「MU プラグイン」** タブにローダーファイルが一覧表示され、稼働状況を確認しやすくなります。
 
 #### 複数の mu-plugins を使用する場合
 
@@ -98,6 +105,11 @@ wp-content/mu-plugins/
 
 ```php
 <?php
+/**
+ * Plugin Name: MU Plugins Loader
+ * Description: mu-plugins ディレクトリのサブディレクトリに置いたプラグインを読み込むローダー。
+ */
+
 require_once __DIR__ . '/snow-monkey-forms-to-airtable/snow-monkey-forms-to-airtable.php';
 require_once __DIR__ . '/another-plugin/another-plugin.php';
 ```
