@@ -221,6 +221,9 @@ Airtable Automation の設定時は、テスト用 Webhook を送信してサン
 
 `WP_DEBUG_LOG` が有効な場合、プラグインは送信モードを切り替えてレスポンスをログに記録します。
 
+> **⚠️ セキュリティ警告:**
+> デバッグログにはフォームのフィールドキーやJSONペイロード（送信内容）が含まれます。個人情報を含む可能性があるため、本番環境では長期間有効にしないでください。デバッグ完了後は速やかに無効化し、`wp-content/debug.log` ファイルを削除またはアクセス制限を設定してください。
+
 **wp-config.php:**
 
 ```php
@@ -236,6 +239,15 @@ define( 'WP_DEBUG_DISPLAY', false );
 | `blocking` | `false`（ノンブロッキング） | `true`（レスポンス待ち） |
 | `timeout` | 1 秒 | 10 秒 |
 | ログ出力 | なし | 常時（成功・失敗ともに） |
+
+**デバッグログに含まれる情報:**
+- `Responser class`: Responserオブジェクトのクラス名
+- `Responser methods`: 利用可能なメソッド一覧
+- `Values count`: フィールド数
+- `Value keys`: フィールド名（キー）のリスト
+- `JSON payload`: 送信されるJSONペイロード（最大500文字）
+
+> **注意:** `JSON payload` にはフォームの送信内容（名前、メールアドレス、メッセージ本文など）が含まれます。個人情報保護の観点から、本番環境でのデバッグログ出力は最小限にし、ログファイルは適切に保護・削除してください。
 
 **ログ出力例:**
 
@@ -302,11 +314,15 @@ define( 'WP_DEBUG_DISPLAY', false );
 
 **送信データが空の場合:**
 
-デバッグログで `Values count: 0` や `JSON payload: []` と表示される場合、フォームデータが正しく取得できていません。以下を確認してください：
+デバッグログで `Values count: 0` と表示される場合、フォームデータが正しく取得できていません。
+
+**注意:** 空の `$values` は `send_to_airtable()` の前に早期リターンされるため、このケースでは `JSON payload: []` は出力されません。デバッグログで `Values count: 0`、`Value keys:` が空、送信結果の `error=smf_empty_values` を確認し、フォームデータが正しく取得できているか切り分けてください。
+
+以下を確認してください：
 
 1. Snow Monkey Forms が v12.0 以上であることを確認
 2. フォームにフィールドが正しく設定されていることを確認
-3. デバッグログで `Responser methods` を確認し、`get_all` メソッドが存在するか確認
+3. デバッグログで `Responser methods` を確認して `get_all` メソッドが存在するかを確認し、あわせて `Values count: 0` / `Value keys:` / `smf_empty_values` の有無を確認
 
 ### レート制限について
 

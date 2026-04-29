@@ -329,7 +329,7 @@ function handle_submission_for_airtable( $is_sended, $responser, $setting, $sour
 			'',
 			new \WP_Error( 'smf_empty_values', sprintf( 'Form values are empty (source=%s).', $source ) )
 		);
-		$already_processed = true;
+		// Let the other hook try again because it may provide the submission values.
 		return;
 	}
 
