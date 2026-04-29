@@ -270,7 +270,7 @@ function handle_submission_for_airtable( $is_sended, $responser, $setting, $sour
 	}
 
 	if ( is_object( $responser ) ) {
-		// Primary: Use get_all() method (standard in SMF v5.x)
+		// Primary: Use get_all() when available (supported in current SMF versions, including v12.x)
 		if ( method_exists( $responser, 'get_all' ) ) {
 			$values = (array) $responser->get_all();
 		}
@@ -286,8 +286,9 @@ function handle_submission_for_airtable( $is_sended, $responser, $setting, $sour
 
 	// Debug: Values extraction result
 	if ( defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) {
+		$value_keys = array_map( 'strval', array_keys( $values ) );
 		error_log( '[SMF to Airtable DEBUG] Values count: ' . count( $values ) );
-		error_log( '[SMF to Airtable DEBUG] Values: ' . print_r( $values, true ) );
+		error_log( '[SMF to Airtable DEBUG] Value keys: ' . implode( ', ', $value_keys ) );
 	}
 
 	if ( true !== $is_sended ) {
@@ -367,11 +368,6 @@ function send_to_airtable( $form_id, $values ) {
 
 	$json_payload = wp_json_encode( $values );
 
-	// Debug: JSON payload before sending
-	if ( defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) {
-		error_log( '[SMF to Airtable DEBUG] JSON payload: ' . substr( $json_payload, 0, 500 ) );
-	}
-
 	if ( false === $json_payload ) {
 		log_webhook_result(
 			(string) $form_id,
@@ -379,6 +375,11 @@ function send_to_airtable( $form_id, $values ) {
 			new \WP_Error( 'smf_payload_encode_failed', 'Failed to encode payload to JSON.' )
 		);
 		return;
+	}
+
+	// Debug: JSON payload before sending
+	if ( defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) {
+		error_log( '[SMF to Airtable DEBUG] JSON payload: ' . substr( $json_payload, 0, 500 ) );
 	}
 
 	$response = wp_remote_post(
