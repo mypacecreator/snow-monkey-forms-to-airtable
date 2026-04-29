@@ -132,7 +132,7 @@ require_once __DIR__ . '/another-plugin/another-plugin.php';
 プラグインは有効化すると自動的に以下をセットアップします：
 
 - カスタム投稿タイプ `airtable_mapping` の登録
-- カスタムメタフィールド `form_id`・`webhook_url` の登録
+- カスタムメタフィールド `smfa_form_id`・`smfa_webhook_url` の登録
 - Snow Monkey Forms の送信フックへの連携処理登録
 
 ### マッピングの作成手順
@@ -272,16 +272,16 @@ define( 'WP_DEBUG_DISPLAY', false );
 
 | フィールド | 説明 | 型 |
 |-----------|------|-----|
-| `form_id` | Snow Monkey Forms のフォーム投稿 ID | 文字列 |
-| `webhook_url` | Airtable Automation の Webhook URL | 文字列 |
+| `smfa_form_id` | Snow Monkey Forms のフォーム投稿 ID | 文字列 |
+| `smfa_webhook_url` | Airtable Automation の Webhook URL | 文字列 |
 
 ## トラブルシューティング
 
 ### マッピングが認識されない場合
 
 1. 「Airtable マッピング」から投稿を作成し、「公開」済みであることを確認します。
-2. メタフィールド `form_id` に Snow Monkey Forms の**投稿 ID**（数値）が入力されているか確認します。
-3. メタフィールド `webhook_url` に正しい URL が設定されているか確認します。
+2. メタフィールド `smfa_form_id` に Snow Monkey Forms の**投稿 ID**（数値）が入力されているか確認します。
+3. メタフィールド `smfa_webhook_url` に正しい URL が設定されているか確認します。
 
 ### データが Airtable に届かない場合
 

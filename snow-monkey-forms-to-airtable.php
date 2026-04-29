@@ -66,7 +66,7 @@ function register_mapping_post_type() {
 function register_meta_fields() {
 	register_post_meta(
 		'airtable_mapping',
-		'form_id',
+		'smfa_form_id',
 		[
 			'type'              => 'string',
 			'single'            => true,
@@ -77,7 +77,7 @@ function register_meta_fields() {
 
 	register_post_meta(
 		'airtable_mapping',
-		'webhook_url',
+		'smfa_webhook_url',
 		[
 			'type'              => 'string',
 			'single'            => true,
@@ -110,8 +110,8 @@ function register_mapping_meta_box() {
  * @param \WP_Post $post The current post object.
  */
 function render_mapping_meta_box( $post ) {
-	$form_id     = get_post_meta( $post->ID, 'form_id', true );
-	$webhook_url = get_post_meta( $post->ID, 'webhook_url', true );
+	$form_id     = get_post_meta( $post->ID, 'smfa_form_id', true );
+	$webhook_url = get_post_meta( $post->ID, 'smfa_webhook_url', true );
 
 	wp_nonce_field( 'smf_to_airtable_save_mapping', 'smf_to_airtable_mapping_nonce' );
 	?>
@@ -183,15 +183,15 @@ function save_mapping_meta_box( $post_id ) {
 		: '';
 
 	if ( '' === $form_id ) {
-		delete_post_meta( $post_id, 'form_id' );
+		delete_post_meta( $post_id, 'smfa_form_id' );
 	} else {
-		update_post_meta( $post_id, 'form_id', $form_id );
+		update_post_meta( $post_id, 'smfa_form_id', $form_id );
 	}
 
 	if ( '' === $webhook_url ) {
-		delete_post_meta( $post_id, 'webhook_url' );
+		delete_post_meta( $post_id, 'smfa_webhook_url' );
 	} else {
-		update_post_meta( $post_id, 'webhook_url', $webhook_url );
+		update_post_meta( $post_id, 'smfa_webhook_url', $webhook_url );
 	}
 }
 
@@ -402,7 +402,7 @@ function get_webhook_url_for_form( $form_id ) {
 		'posts_per_page' => 1,
 		'meta_query'     => [
 			[
-				'key'     => 'form_id',
+				'key'     => 'smfa_form_id',
 				'value'   => $form_id,
 				'compare' => '=',
 			],
@@ -415,7 +415,7 @@ function get_webhook_url_for_form( $form_id ) {
 		return null;
 	}
 
-	$webhook_url = get_post_meta( $posts->posts[0]->ID, 'webhook_url', true );
+	$webhook_url = get_post_meta( $posts->posts[0]->ID, 'smfa_webhook_url', true );
 
 	return ! empty( $webhook_url ) ? $webhook_url : null;
 }
