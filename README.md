@@ -245,9 +245,17 @@ define( 'WP_DEBUG_DISPLAY', false );
 - `Responser methods`: 利用可能なメソッド一覧
 - `Values count`: フィールド数
 - `Value keys`: フィールド名（キー）のリスト
-- `JSON payload`: 送信されるJSONペイロード（最大500文字）
+- `JSON payload metadata`: 送信ペイロードのバイト数とフィールド数（デフォルト）
 
-> **注意:** `JSON payload` にはフォームの送信内容（名前、メールアドレス、メッセージ本文など）が含まれます。個人情報保護の観点から、本番環境でのデバッグログ出力は最小限にし、ログファイルは適切に保護・削除してください。
+> **注意:** デフォルトではJSONペイロードのメタデータ（バイト数・フィールド数）のみ記録されます。フォームの送信内容そのものはログに残りません。本番環境でのデバッグログは完了後に速やかに無効化し、`wp-content/debug.log` を適切に保護・削除してください。
+
+**生ペイロードのオプトイン:**
+
+フォームの送信内容（生のJSONペイロード）をログに記録する必要がある場合は、`smf_to_airtable/log_raw_payload` フィルターを使って明示的に有効化してください（**本番環境では使用しないでください**）。
+
+```php
+add_filter( 'smf_to_airtable/log_raw_payload', '__return_true' );
+```
 
 **ログ出力例:**
 
@@ -256,7 +264,7 @@ define( 'WP_DEBUG_DISPLAY', false );
 [SMF to Airtable DEBUG] Responser methods: __construct, send, get, get_all
 [SMF to Airtable DEBUG] Values count: 3
 [SMF to Airtable DEBUG] Value keys: お名前, メールアドレス, 内容
-[SMF to Airtable DEBUG] JSON payload: {"お名前":"山田太郎","メールアドレス":"test@example.com","内容":"テスト"}
+[SMF to Airtable DEBUG] JSON payload metadata: bytes=72, fields=3
 [SMF to Airtable] form_id=42 success=true status=200
 ```
 

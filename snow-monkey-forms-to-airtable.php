@@ -377,9 +377,22 @@ function send_to_airtable( $form_id, $values ) {
 		return;
 	}
 
-	// Debug: JSON payload before sending
+	// Debug: log only payload metadata by default. Raw payload logging requires explicit opt-in.
 	if ( defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) {
-		error_log( '[SMF to Airtable DEBUG] JSON payload: ' . substr( $json_payload, 0, 500 ) );
+		$field_count     = is_array( $values ) ? count( $values ) : 0;
+		$log_raw_payload = (bool) apply_filters( 'smf_to_airtable/log_raw_payload', false, $form_id, $values );
+
+		if ( $log_raw_payload ) {
+			error_log( '[SMF to Airtable DEBUG] JSON payload: ' . substr( $json_payload, 0, 500 ) );
+		} else {
+			error_log(
+				sprintf(
+					'[SMF to Airtable DEBUG] JSON payload metadata: bytes=%d, fields=%d',
+					strlen( $json_payload ),
+					$field_count
+				)
+			);
+		}
 	}
 
 	$response = wp_remote_post(
