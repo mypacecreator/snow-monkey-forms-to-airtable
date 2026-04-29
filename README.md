@@ -243,7 +243,7 @@ define( 'WP_DEBUG_DISPLAY', false );
 [SMF to Airtable DEBUG] Responser class: Snow_Monkey\Plugin\Forms\App\Model\Responser
 [SMF to Airtable DEBUG] Responser methods: __construct, send, get, get_all
 [SMF to Airtable DEBUG] Values count: 3
-[SMF to Airtable DEBUG] Values: Array ( [お名前] => 山田太郎 [メールアドレス] => test@example.com [内容] => テスト )
+[SMF to Airtable DEBUG] Value keys: お名前, メールアドレス, 内容
 [SMF to Airtable DEBUG] JSON payload: {"お名前":"山田太郎","メールアドレス":"test@example.com","内容":"テスト"}
 [SMF to Airtable] form_id=42 success=true status=200
 ```
