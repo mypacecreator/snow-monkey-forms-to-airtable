@@ -263,12 +263,32 @@ function handle_submission_for_airtable( $is_sended, $responser, $setting, $sour
 		}
 	}
 
+	// Debug: Responser object structure
+	if ( defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG && is_object( $responser ) ) {
+		error_log( '[SMF to Airtable DEBUG] Responser class: ' . get_class( $responser ) );
+		error_log( '[SMF to Airtable DEBUG] Responser methods: ' . implode( ', ', get_class_methods( $responser ) ) );
+	}
+
 	if ( is_object( $responser ) ) {
-		if ( method_exists( $responser, 'get_values' ) ) {
+		// Primary: Use get_all() when available (supported in current SMF versions, including v12.x)
+		if ( method_exists( $responser, 'get_all' ) ) {
+			$values = (array) $responser->get_all();
+		}
+		// Fallback 1: Try get_values() for potential older versions
+		elseif ( method_exists( $responser, 'get_values' ) ) {
 			$values = (array) $responser->get_values();
-		} elseif ( isset( $responser->values ) && is_array( $responser->values ) ) {
+		}
+		// Fallback 2: Try direct property access
+		elseif ( isset( $responser->values ) && is_array( $responser->values ) ) {
 			$values = $responser->values;
 		}
+	}
+
+	// Debug: Values extraction result
+	if ( defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) {
+		$value_keys = array_map( 'strval', array_keys( $values ) );
+		error_log( '[SMF to Airtable DEBUG] Values count: ' . count( $values ) );
+		error_log( '[SMF to Airtable DEBUG] Value keys: ' . implode( ', ', $value_keys ) );
 	}
 
 	if ( true !== $is_sended ) {
@@ -299,6 +319,17 @@ function handle_submission_for_airtable( $is_sended, $responser, $setting, $sour
 			new \WP_Error( 'smf_form_id_not_found', sprintf( 'form_id could not be resolved (source=%s).', $source ) )
 		);
 		// Let the other hook try again because it may provide richer context.
+		return;
+	}
+
+	// Validate values before sending
+	if ( empty( $values ) ) {
+		log_webhook_result(
+			$form_id,
+			'',
+			new \WP_Error( 'smf_empty_values', sprintf( 'Form values are empty (source=%s).', $source ) )
+		);
+		// Let the other hook try again because it may provide the submission values.
 		return;
 	}
 
@@ -344,6 +375,24 @@ function send_to_airtable( $form_id, $values ) {
 			new \WP_Error( 'smf_payload_encode_failed', 'Failed to encode payload to JSON.' )
 		);
 		return;
+	}
+
+	// Debug: log only payload metadata by default. Raw payload logging requires explicit opt-in.
+	if ( defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) {
+		$field_count     = is_array( $values ) ? count( $values ) : 0;
+		$log_raw_payload = (bool) apply_filters( 'smf_to_airtable/log_raw_payload', false, $form_id, $values );
+
+		if ( $log_raw_payload ) {
+			error_log( '[SMF to Airtable DEBUG] JSON payload: ' . substr( $json_payload, 0, 500 ) );
+		} else {
+			error_log(
+				sprintf(
+					'[SMF to Airtable DEBUG] JSON payload metadata: bytes=%d, fields=%d',
+					strlen( $json_payload ),
+					$field_count
+				)
+			);
+		}
 	}
 
 	$response = wp_remote_post(
