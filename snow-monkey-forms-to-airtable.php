@@ -497,29 +497,8 @@ function log_webhook_result( $form_id, $webhook_url, $response ) {
  * @return string|null The webhook URL, or null if not found.
  */
 function get_webhook_url_for_form( $form_id ) {
-	$args = [
-		'post_type'      => 'airtable_mapping',
-		'posts_per_page' => 1,
-		'fields'         => 'ids',
-		'no_found_rows'  => true,
-		'meta_query'     => [
-			[
-				'key'     => 'smfa_form_id',
-				'value'   => $form_id,
-				'compare' => '=',
-			],
-		],
-	];
-
-	$posts = new \WP_Query( $args );
-
-	if ( ! $posts->have_posts() ) {
-		return null;
-	}
-
-	$webhook_url = get_post_meta( $posts->posts[0], 'smfa_webhook_url', true );
-
-	return ! empty( $webhook_url ) ? $webhook_url : null;
+	$mapping = get_mapping_for_form( $form_id );
+	return $mapping['webhook_url'];
 }
 
 /**
@@ -529,13 +508,25 @@ function get_webhook_url_for_form( $form_id ) {
  * @return string The configured label, or empty string if not set.
  */
 function get_form_label_for_form( $form_id ) {
+	$mapping = get_mapping_for_form( $form_id );
+	return $mapping['form_label'];
+}
+
+/**
+ * Resolve the airtable_mapping post for a given form ID and return its meta in one query.
+ * Results are cached statically so repeated calls within the same request cost no extra DB queries.
+ *
+ * @param string $form_id フォーム識別子（投稿IDまたは name 等の文字列）。
+ * @return array{ webhook_url: string|null, form_label: string }
+ */
+function get_mapping_for_form( $form_id ) {
 	static $cache = [];
 
 	if ( isset( $cache[ $form_id ] ) ) {
 		return $cache[ $form_id ];
 	}
 
-	$args = [
+	$posts = new \WP_Query( [
 		'post_type'      => 'airtable_mapping',
 		'posts_per_page' => 1,
 		'fields'         => 'ids',
@@ -547,13 +538,19 @@ function get_form_label_for_form( $form_id ) {
 				'compare' => '=',
 			],
 		],
+	] );
+
+	if ( ! $posts->have_posts() ) {
+		$cache[ $form_id ] = [ 'webhook_url' => null, 'form_label' => '' ];
+		return $cache[ $form_id ];
+	}
+
+	$post_id             = $posts->posts[0];
+	$webhook_url         = get_post_meta( $post_id, 'smfa_webhook_url', true );
+	$cache[ $form_id ] = [
+		'webhook_url' => ! empty( $webhook_url ) ? $webhook_url : null,
+		'form_label'  => (string) get_post_meta( $post_id, 'smfa_form_label', true ),
 	];
-
-	$posts = new \WP_Query( $args );
-
-	$cache[ $form_id ] = $posts->have_posts()
-		? (string) get_post_meta( $posts->posts[0], 'smfa_form_label', true )
-		: '';
 
 	return $cache[ $form_id ];
 }
