@@ -410,7 +410,7 @@ function send_to_airtable( $form_id, $values ) {
 
 	if ( '' === $form_label && is_numeric( $form_id ) ) {
 		$form_title = get_the_title( (int) $form_id );
-		$form_label = '' !== $form_title ? $form_title : '';
+		$form_label = '' !== $form_title ? sanitize_text_field( $form_title ) : '';
 	}
 
 	// Union 演算子で先頭付与: フォーム側に '_form_name' キーが存在しても左辺（プラグイン値）が優先される。
@@ -525,7 +525,7 @@ function get_webhook_url_for_form( $form_id ) {
 /**
  * Get the configured form label for a given form ID.
  *
- * @param string $form_id The form ID (Snow Monkey Forms post ID).
+ * @param string $form_id フォーム識別子（投稿IDまたは name 等の文字列）。
  * @return string The configured label, or empty string if not set.
  */
 function get_form_label_for_form( $form_id ) {
