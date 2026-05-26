@@ -85,6 +85,17 @@ function register_meta_fields() {
 			'show_in_rest'      => true,
 		]
 	);
+
+	register_post_meta(
+		'airtable_mapping',
+		'smfa_form_label',
+		[
+			'type'              => 'string',
+			'single'            => true,
+			'sanitize_callback' => 'sanitize_text_field',
+			'show_in_rest'      => true,
+		]
+	);
 }
 
 /**
@@ -112,6 +123,7 @@ function register_mapping_meta_box() {
 function render_mapping_meta_box( $post ) {
 	$form_id     = get_post_meta( $post->ID, 'smfa_form_id', true );
 	$webhook_url = get_post_meta( $post->ID, 'smfa_webhook_url', true );
+	$form_label  = get_post_meta( $post->ID, 'smfa_form_label', true );
 
 	wp_nonce_field( 'smf_to_airtable_save_mapping', 'smf_to_airtable_mapping_nonce' );
 	?>
@@ -145,6 +157,23 @@ function render_mapping_meta_box( $post ) {
 		/>
 	</p>
 	<p class="description"><?php esc_html_e( 'Airtable Automation の webhook URL を入力してください。', 'smf-to-airtable' ); ?></p>
+
+	<hr />
+
+	<p>
+		<label for="smf-to-airtable-form-label"><strong><?php esc_html_e( 'フォームラベル', 'smf-to-airtable' ); ?></strong></label>
+	</p>
+	<p>
+		<input
+			type="text"
+			id="smf-to-airtable-form-label"
+			name="smf_to_airtable_form_label"
+			value="<?php echo esc_attr( $form_label ); ?>"
+			class="widefat"
+			placeholder="<?php esc_attr_e( '例: お問い合わせフォーム', 'smf-to-airtable' ); ?>"
+		/>
+	</p>
+	<p class="description"><?php esc_html_e( 'Airtable に送信されるペイロードに付与する識別ラベルです。未入力の場合はフォームのタイトルが自動的に使用されます。', 'smf-to-airtable' ); ?></p>
 	<?php
 }
 
@@ -192,6 +221,16 @@ function save_mapping_meta_box( $post_id ) {
 		delete_post_meta( $post_id, 'smfa_webhook_url' );
 	} else {
 		update_post_meta( $post_id, 'smfa_webhook_url', $webhook_url );
+	}
+
+	$form_label = isset( $_POST['smf_to_airtable_form_label'] )
+		? sanitize_text_field( wp_unslash( $_POST['smf_to_airtable_form_label'] ) )
+		: '';
+
+	if ( '' === $form_label ) {
+		delete_post_meta( $post_id, 'smfa_form_label' );
+	} else {
+		update_post_meta( $post_id, 'smfa_form_label', $form_label );
 	}
 }
 
@@ -366,6 +405,18 @@ function send_to_airtable( $form_id, $values ) {
 		return;
 	}
 
+	// フォーム識別子を解決: 設定ラベル → フォームタイトル → form_id の優先順
+	$form_label = get_form_label_for_form( $form_id );
+
+	if ( '' === $form_label && is_numeric( $form_id ) ) {
+		$form_title = get_the_title( (int) $form_id );
+		$form_label = '' !== $form_title ? sanitize_text_field( $form_title ) : '';
+	}
+
+	// Union 演算子で先頭付与: フォーム側に '_form_name' キーが存在しても左辺（プラグイン値）が優先される。
+	$identifier = '' !== $form_label ? $form_label : (string) $form_id;
+	$values     = [ '_form_name' => $identifier ] + $values;
+
 	$json_payload = wp_json_encode( $values );
 
 	if ( false === $json_payload ) {
@@ -446,9 +497,40 @@ function log_webhook_result( $form_id, $webhook_url, $response ) {
  * @return string|null The webhook URL, or null if not found.
  */
 function get_webhook_url_for_form( $form_id ) {
-	$args = [
+	$mapping = get_mapping_for_form( $form_id );
+	return $mapping['webhook_url'];
+}
+
+/**
+ * Get the configured form label for a given form ID.
+ *
+ * @param string $form_id フォーム識別子（投稿IDまたは name 等の文字列）。
+ * @return string The configured label, or empty string if not set.
+ */
+function get_form_label_for_form( $form_id ) {
+	$mapping = get_mapping_for_form( $form_id );
+	return $mapping['form_label'];
+}
+
+/**
+ * Resolve the airtable_mapping post for a given form ID and return its meta in one query.
+ * Results are cached statically so repeated calls within the same request cost no extra DB queries.
+ *
+ * @param string $form_id フォーム識別子（投稿IDまたは name 等の文字列）。
+ * @return array{ webhook_url: string|null, form_label: string }
+ */
+function get_mapping_for_form( $form_id ) {
+	static $cache = [];
+
+	if ( isset( $cache[ $form_id ] ) ) {
+		return $cache[ $form_id ];
+	}
+
+	$posts = new \WP_Query( [
 		'post_type'      => 'airtable_mapping',
 		'posts_per_page' => 1,
+		'fields'         => 'ids',
+		'no_found_rows'  => true,
 		'meta_query'     => [
 			[
 				'key'     => 'smfa_form_id',
@@ -456,15 +538,19 @@ function get_webhook_url_for_form( $form_id ) {
 				'compare' => '=',
 			],
 		],
-	];
-
-	$posts = new \WP_Query( $args );
+	] );
 
 	if ( ! $posts->have_posts() ) {
-		return null;
+		$cache[ $form_id ] = [ 'webhook_url' => null, 'form_label' => '' ];
+		return $cache[ $form_id ];
 	}
 
-	$webhook_url = get_post_meta( $posts->posts[0]->ID, 'smfa_webhook_url', true );
+	$post_id             = $posts->posts[0];
+	$webhook_url         = get_post_meta( $post_id, 'smfa_webhook_url', true );
+	$cache[ $form_id ] = [
+		'webhook_url' => ! empty( $webhook_url ) ? $webhook_url : null,
+		'form_label'  => (string) get_post_meta( $post_id, 'smfa_form_label', true ),
+	];
 
-	return ! empty( $webhook_url ) ? $webhook_url : null;
+	return $cache[ $form_id ];
 }
