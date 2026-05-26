@@ -413,11 +413,9 @@ function send_to_airtable( $form_id, $values ) {
 		$form_label = '' !== $form_title ? $form_title : '';
 	}
 
-	if ( '' !== $form_label ) {
-		$values = array_merge( [ '_form_name' => $form_label ], $values );
-	} else {
-		$values = array_merge( [ '_form_name' => (string) $form_id ], $values );
-	}
+	// Union 演算子で先頭付与: フォーム側に '_form_name' キーが存在しても左辺（プラグイン値）が優先される。
+	$identifier = '' !== $form_label ? $form_label : (string) $form_id;
+	$values     = [ '_form_name' => $identifier ] + $values;
 
 	$json_payload = wp_json_encode( $values );
 
@@ -502,6 +500,8 @@ function get_webhook_url_for_form( $form_id ) {
 	$args = [
 		'post_type'      => 'airtable_mapping',
 		'posts_per_page' => 1,
+		'fields'         => 'ids',
+		'no_found_rows'  => true,
 		'meta_query'     => [
 			[
 				'key'     => 'smfa_form_id',
@@ -517,7 +517,7 @@ function get_webhook_url_for_form( $form_id ) {
 		return null;
 	}
 
-	$webhook_url = get_post_meta( $posts->posts[0]->ID, 'smfa_webhook_url', true );
+	$webhook_url = get_post_meta( $posts->posts[0], 'smfa_webhook_url', true );
 
 	return ! empty( $webhook_url ) ? $webhook_url : null;
 }
@@ -529,9 +529,17 @@ function get_webhook_url_for_form( $form_id ) {
  * @return string The configured label, or empty string if not set.
  */
 function get_form_label_for_form( $form_id ) {
+	static $cache = [];
+
+	if ( isset( $cache[ $form_id ] ) ) {
+		return $cache[ $form_id ];
+	}
+
 	$args = [
 		'post_type'      => 'airtable_mapping',
 		'posts_per_page' => 1,
+		'fields'         => 'ids',
+		'no_found_rows'  => true,
 		'meta_query'     => [
 			[
 				'key'     => 'smfa_form_id',
@@ -543,9 +551,9 @@ function get_form_label_for_form( $form_id ) {
 
 	$posts = new \WP_Query( $args );
 
-	if ( ! $posts->have_posts() ) {
-		return '';
-	}
+	$cache[ $form_id ] = $posts->have_posts()
+		? (string) get_post_meta( $posts->posts[0], 'smfa_form_label', true )
+		: '';
 
-	return (string) get_post_meta( $posts->posts[0]->ID, 'smfa_form_label', true );
+	return $cache[ $form_id ];
 }
